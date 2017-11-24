@@ -1,0 +1,167 @@
+---
+title: "Practical Machine Learning"
+author: "Sourav"
+date: "23 November 2017"
+output: html_document
+---
+#Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+he training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+
+Goal 
+
+The goal of the project is to predict how the excercise was done or predicting the "classe" variable in the training set. 
+
+
+### Reading the data 
+
+Setting the working directory and importing the data 
+```{r , echo = TRUE}
+setwd("D:/git/PML")
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+
+### Importing the libraries
+```{r, echo= TRUE}
+library(lubridate); library(caret); library(randomForest); library(dplyr); library(rpart);library(e1071);
+```
+
+## Cleaning the data 
+
+There are many columns with all 0 or NA value. We would be removing them basis the data test set data since we would only have the test set data to use for predictions. Hence I would build my model only with data available in the test set.
+
+```{r , echo=T}
+datacleantraining <- training[,colSums(is.na(testing)) == 0]
+datacleantesting <- testing[,colSums(is.na(testing)) ==0]
+
+# changing the time and data format 
+datacleantraining$cvtd_timestamp <- as.Date(datacleantraining$cvtd_timestamp, format = "%m/%d/%Y %H:%M")
+
+datacleantesting$cvtd_timestamp <- as.Date(datacleantesting$cvtd_timestamp, format = "%m/%d/%Y %H:%M")
+
+
+```
+
+## Exploratory Analysis 
+
+```{r , echoo = T}
+table(datacleantraining$classe, datacleantraining$user_name)
+```
+```{r , echo = T}
+qplot(datacleantraining$classe, xlab = "Activity Class", fill = datacleantraining$user_name)
+```
+```{r , echo= T}
+qplot(datacleantraining$user_name, xlab = "User", fill = datacleantraining$classe)
+```
+Class A is the highest done activity followd by B and E.
+Among the users, "Adelmo" is the highest followd by "Charles" and "Jeremy"
+
+Of the available variables(regressors), I want to build my model with regressors which have are dependent on the reading values and not the date or the user. 
+
+For the model to be effective, I believe this should be user agnostic and should be able to predict the class of activity irrespective of the time
+
+### Further cleaning of the variables
+```{r , echo= T}
+filter1 <- grepl("belt|arm|dumbell|classe", names(datacleantraining))
+datacleantraining <- datacleantraining[,filter1]
+datacleantesting <- datacleantesting[,filter1]
+dim(datacleantraining)
+
+```
+
+Hence, from the 160 initial columns we are now down to 40 columns of which  we will use 39 variables (and one is the outcome variable ) to construct our model. 
+
+Before constructing the model, I want to check for zero variance regressors among the set of variables
+
+```{r , echo = T}
+zerovariance <- nearZeroVar(datacleantraining, saveMetrics = T)
+summary(zerovariance$zeroVar); summary(zerovariance$nzv)
+```
+
+We see that of this, there are no variables with near zero variance. Hence we would be using all the 39 variable ( 40 columns -  the outcome varianble) to construct our predictive model 
+
+# Building the Model 
+
+I will use the training set to create a further training set and a testing set which I would be useing for cross validation and testing 
+
+```{r, echo = T}
+inTrain <-  createDataPartition(datacleantraining$classe , p = 0.5, list = FALSE)
+train1 <- datacleantraining[inTrain,]; test1 <- datacleantraining[-inTrain,]
+```
+
+While ideally I would have wanted 60% to be classfied in the training set, my machine crashed thrice because of resource and RAM constraints. 
+
+Hence used it on 50% 
+
+
+
+## using a random forest model 
+
+```{r , echo = TRUE}
+fit1 <- train(classe ~ . , data = train1, method = "rf")
+```
+
+Checking the model
+
+```{r, echo = TRUE}
+fit1$finalModel
+```
+
+We see that the error rate is 1.53% 
+
+## Predicting on the Training set that we created
+
+Now to check the accuracy of the preictions
+
+```{r, echo = TRUE}
+pred1 <- predict(fit1, train1)
+confusionMatrix(pred1, train1$classe)
+```
+
+Here we get 100% accuracy 
+
+## Predicting on the test set that we created
+
+We would now use this on the test set which we created on the partition
+
+
+```{r}
+pred2 <- predict(fit1, newdata = test1)
+confusionMatrix(pred2, test1$classe)
+```
+
+on the test set the model gives an accuracy of 99% which is a good fit. 
+
+
+## Charts 
+
+```{r, echo= TRUE}
+plot(fit1$finalModel, main = "Final Model")
+```
+```{r}
+plot(fit1)
+```
+
+## Deriving the Quiz answers
+
+```{r}
+pred3 <- predict(fit1, newdata = datacleantesting)
+pred3
+```
+
+
+These were the final answers I used
+
